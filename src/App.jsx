@@ -77,12 +77,6 @@ export default function App() {
   const [loadingProgress, setLoadingProgress] = useState(0); // 0 ~ 100
   const [error, setError] = useState(null);
 
-  // 변경 감지: 마지막으로 생성했을 때의 오버레이 상태 저장 (Global + Local checksum?)
-  const [lastGeneratedConfig, setLastGeneratedConfig] = useState(null);
-  // Compare current state (global + local) with last generated
-  const currentConfigSignature = JSON.stringify({ global: overlay, local: pageOverlays });
-  const hasChanges = lastGeneratedConfig && currentConfigSignature !== lastGeneratedConfig;
-
   // 뷰 모드: 'preview' (A모드) | 'grid' (B모드)
   const [viewMode, setViewMode] = useState('preview');
   const [selectedPageId, setSelectedPageId] = useState(null);
@@ -429,7 +423,6 @@ export default function App() {
       blobUrlRef.current = url;
       setGeneratedUrl(url);
       setGeneratedBytes(pdfBytes);
-      setLastGeneratedConfig(JSON.stringify({ global: overlay, local: pageOverlays }));
       setIsActionPanelVisible(true); 
     } catch (err) {
       console.error(err);
@@ -438,14 +431,6 @@ export default function App() {
       setIsGenerating(false);
     }
   }, [pages, overlay, pageOverlays]);
-
-  // ... (handleReset, handleDownload, handleShare, handleSelectPage, Nav) - KEEP
-  const handleReset = useCallback(() => {
-    setIsActionPanelVisible(false);
-    setTimeout(() => {
-      setGeneratedUrl(null);
-    }, 300);
-  }, []);
 
   const handleDownload = useCallback(() => {
     if (!generatedUrl) return;
@@ -524,12 +509,31 @@ export default function App() {
     }
   }, [selectedPageId, pages]);
 
-  const handleKeyboardPageNavigation = useCallback((direction, extendSelection) => {
+  const handleKeyboardPageNavigation = useCallback((key, extendSelection) => {
     if (!selectedPageId) return;
 
     const currentIdx = pages.findIndex((p) => p.id === selectedPageId);
-    const nextIdx = currentIdx + direction;
-    if (currentIdx === -1 || nextIdx < 0 || nextIdx >= pages.length) return;
+    if (currentIdx === -1) return;
+
+    let nextIdx = currentIdx;
+    if (viewMode === 'grid') {
+      const grid = document.querySelector('.page-grid--grid');
+      const columnCount = grid
+        ? getComputedStyle(grid).gridTemplateColumns.trim().split(/\s+/).length
+        : 1;
+      const row = Math.floor(currentIdx / columnCount);
+      const column = currentIdx % columnCount;
+      if (key === 'ArrowLeft' && column > 0) nextIdx = currentIdx - 1;
+      if (key === 'ArrowRight' && column < columnCount - 1) nextIdx = currentIdx + 1;
+      if (key === 'ArrowUp' && row > 0) nextIdx = currentIdx - columnCount;
+      if (key === 'ArrowDown' && (currentIdx + columnCount) < pages.length) nextIdx = currentIdx + columnCount;
+    } else if (key === 'ArrowUp') {
+      nextIdx = currentIdx - 1;
+    } else if (key === 'ArrowDown') {
+      nextIdx = currentIdx + 1;
+    }
+
+    if (nextIdx === currentIdx || nextIdx < 0 || nextIdx >= pages.length) return;
 
     const nextId = pages[nextIdx].id;
     if (!extendSelection) {
@@ -547,7 +551,7 @@ export default function App() {
     const max = Math.max(anchorIdx, nextIdx);
     setSelectedPageId(nextId);
     setMultiSelectedIds(new Set(pages.slice(min, max + 1).map((p) => p.id)));
-  }, [selectedPageId, pages]);
+  }, [selectedPageId, pages, viewMode]);
 
   // 방향키 네비게이션 및 Delete 키
   useEffect(() => {
@@ -555,12 +559,9 @@ export default function App() {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       if (deleteTargetIds.length > 0) return;
 
-      if (e.key === 'ArrowUp') {
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
         e.preventDefault();
-        handleKeyboardPageNavigation(-1, e.shiftKey);
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        handleKeyboardPageNavigation(1, e.shiftKey);
+        handleKeyboardPageNavigation(e.key, e.shiftKey);
       } else if (e.key === 'Delete') {
         e.preventDefault();
         handlePreviewDelete();
@@ -916,6 +917,12 @@ export default function App() {
                     {isGenerating ? <><Loader size={18} className="action-spinner" />생성 중...</> : <><FileText size={18} />PDF 생성</>}
                   </button>
                 </div>
+                <ActionPanel
+                  isVisible={isActionPanelVisible}
+                  onDownload={handleDownload}
+                  onShare={handleShare}
+                  canShare={isShareSupported()}
+                />
                 <OverlaySettings 
                   globalOverlay={overlay} 
                   onGlobalChange={handleGlobalOverlayChange}
@@ -975,6 +982,12 @@ export default function App() {
                     {isGenerating ? <><Loader size={18} className="action-spinner" />생성 중...</> : <><FileText size={18} />PDF 생성</>}
                   </button>
                 </div>
+                <ActionPanel
+                  isVisible={isActionPanelVisible}
+                  onDownload={handleDownload}
+                  onShare={handleShare}
+                  canShare={isShareSupported()}
+                />
                 <OverlaySettings 
                   globalOverlay={overlay} 
                   onGlobalChange={handleGlobalOverlayChange}
@@ -986,17 +999,6 @@ export default function App() {
             </div>
           )}
 
-          {/* 하단: 액션 패널 */}
-          <ActionPanel
-            isVisible={isActionPanelVisible}
-            onGenerate={handleGenerate}
-            onReset={handleReset}
-            onDownload={handleDownload}
-            onShare={handleShare}
-            canShare={isShareSupported()}
-            isGenerating={isGenerating}
-            hasChanges={hasChanges}
-          />
         </main>
       )}
 

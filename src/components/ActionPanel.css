@@ -1,32 +1,13 @@
 /* ActionPanel.css */
 .action-panel {
-  position: fixed;
-  bottom: 0;
-  left: 0;
   width: 100%;
-  display: flex;
-  justify-content: center;
-  padding: var(--space-md);
-  padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
-  background: var(--color-bg-panel);
-  border-top: 1px solid var(--color-border);
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(12px);
-  z-index: 100;
-  transform: translateY(120%); /* 숨김 상태 */
-  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1); /* 스프링 느낌 */
-}
-
-.action-panel--visible {
-  transform: translateY(0);
+  padding: 0 0 var(--space-md);
 }
 
 .action-panel__content {
   display: flex;
-  gap: var(--space-md);
-  max-width: 600px;
+  gap: var(--space-sm);
   width: 100%;
-  justify-content: center;
 }
 
 .action-btn {
