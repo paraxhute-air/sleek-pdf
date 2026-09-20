@@ -87,6 +87,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState('preview');
   const [selectedPageId, setSelectedPageId] = useState(null);
   const [multiSelectedIds, setMultiSelectedIds] = useState(new Set());
+  // Shift+방향키로 범위를 확장할 때 사용하는 선택 시작점
+  const selectionAnchorIdRef = useRef(null);
   const [deleteTargetIds, setDeleteTargetIds] = useState([]); 
   const [dividers, setDividers] = useState(new Set()); 
   const [previewImage, setPreviewImage] = useState(null);
@@ -151,10 +153,12 @@ export default function App() {
     if (pages.length > 0 && !selectedPageId) {
       setSelectedPageId(pages[0].id);
       setMultiSelectedIds(new Set([pages[0].id]));
+      selectionAnchorIdRef.current = pages[0].id;
     }
     if (pages.length === 0) {
       setSelectedPageId(null);
       setMultiSelectedIds(new Set());
+      selectionAnchorIdRef.current = null;
     }
   }, [pages, selectedPageId]);
 
@@ -459,6 +463,12 @@ export default function App() {
   }, [generatedBytes]);
 
   const handleSelectPage = useCallback((pageId, event) => {
+    if (!event?.shiftKey) {
+      selectionAnchorIdRef.current = pageId;
+    } else if (!selectionAnchorIdRef.current) {
+      selectionAnchorIdRef.current = selectedPageId;
+    }
+
     if (event && (event.ctrlKey || event.metaKey)) {
       setMultiSelectedIds(prev => {
         const next = new Set(prev);
@@ -514,6 +524,31 @@ export default function App() {
     }
   }, [selectedPageId, pages]);
 
+  const handleKeyboardPageNavigation = useCallback((direction, extendSelection) => {
+    if (!selectedPageId) return;
+
+    const currentIdx = pages.findIndex((p) => p.id === selectedPageId);
+    const nextIdx = currentIdx + direction;
+    if (currentIdx === -1 || nextIdx < 0 || nextIdx >= pages.length) return;
+
+    const nextId = pages[nextIdx].id;
+    if (!extendSelection) {
+      selectionAnchorIdRef.current = nextId;
+      setSelectedPageId(nextId);
+      setMultiSelectedIds(new Set([nextId]));
+      return;
+    }
+
+    const anchorId = selectionAnchorIdRef.current || selectedPageId;
+    const anchorIdx = pages.findIndex((p) => p.id === anchorId);
+    if (anchorIdx === -1) return;
+
+    const min = Math.min(anchorIdx, nextIdx);
+    const max = Math.max(anchorIdx, nextIdx);
+    setSelectedPageId(nextId);
+    setMultiSelectedIds(new Set(pages.slice(min, max + 1).map((p) => p.id)));
+  }, [selectedPageId, pages]);
+
   // 방향키 네비게이션 및 Delete 키
   useEffect(() => {
     const handleNavigationKeyDown = (e) => {
@@ -522,10 +557,10 @@ export default function App() {
 
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        handlePrevPage();
+        handleKeyboardPageNavigation(-1, e.shiftKey);
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        handleNextPage();
+        handleKeyboardPageNavigation(1, e.shiftKey);
       } else if (e.key === 'Delete') {
         e.preventDefault();
         handlePreviewDelete();
@@ -533,7 +568,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleNavigationKeyDown);
     return () => window.removeEventListener('keydown', handleNavigationKeyDown);
-  }, [handlePrevPage, handleNextPage, deleteTargetIds.length, multiSelectedIds, selectedPageId]);
+  }, [handleKeyboardPageNavigation, deleteTargetIds.length, multiSelectedIds, selectedPageId]);
 
   const handleZoomIn = () => setPreviewZoom(prev => Math.min(prev + 0.1, 3.0));
   const handleZoomOut = () => setPreviewZoom(prev => Math.max(prev - 0.1, 0.5));
