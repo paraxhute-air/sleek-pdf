@@ -193,16 +193,16 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
     const vH = isRotated ? pW : pH; // Visual Height
 
     /**
-     * getFinalCoords
-     * Transforms visual center coordinates, dimensions, and rotation 
-     * into PDF coordinate system based on page rotation.
+     * localToFinal
+     * 중심점(vCx,vCy) 기준 로컬 오프셋(lx,ly)을 각도만큼 회전시키고
+     * 페이지 자체 회전까지 반영해 최종 PDF 좌표로 변환한다.
      */
-    const getFinalCoords = (vCx, vCy, elW, elH, vAngle) => {
+    const localToFinal = (vCx, vCy, lx, ly, vAngle) => {
        const rad = (vAngle * Math.PI) / 180;
        const cos = Math.cos(rad);
        const sin = Math.sin(rad);
-       const rx = (-elW / 2) * cos - (-elH / 2) * sin;
-       const ry = (-elW / 2) * sin + (-elH / 2) * cos;
+       const rx = lx * cos - ly * sin;
+       const ry = lx * sin + ly * cos;
        const vx = vCx + rx;
        const vy = vCy + ry;
 
@@ -226,6 +226,14 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
        }
        return { x: fx, y: fy, rotate: degrees(fr) };
     };
+
+    /**
+     * getFinalCoords
+     * Transforms visual center coordinates, dimensions, and rotation
+     * into PDF coordinate system based on page rotation.
+     */
+    const getFinalCoords = (vCx, vCy, elW, elH, vAngle) =>
+       localToFinal(vCx, vCy, -elW / 2, -elH / 2, vAngle);
 
     /**
      * TEXT DRAWER HELPER
@@ -282,12 +290,14 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
           finalDrawOpts.skew = { xAxis: -15, yAxis: 0 };
        }
 
-       page.drawText(text, finalDrawOpts);
-
-       // Bold Simulation
        if (isBold) {
+          // 볼드 시뮬레이션: 원래 위치 기준 좌우 대칭으로 겹쳐 그려야 무게중심이
+          // 한쪽으로 쏠리지 않는다 (예전엔 오른쪽으로만 오프셋을 줘서 우측으로 치우쳤음).
           const offset = fontSize * 0.02;
-          page.drawText(text, { ...finalDrawOpts, x: finalDrawOpts.x + offset });
+          page.drawText(text, { ...finalDrawOpts, x: finalDrawOpts.x - offset / 2 });
+          page.drawText(text, { ...finalDrawOpts, x: finalDrawOpts.x + offset / 2 });
+       } else {
+          page.drawText(text, finalDrawOpts);
        }
        
        // Underline
@@ -367,7 +377,13 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
        
        const sFont = await getFontForConfig({ fontFamily: 'malgun' });
        const fontSize = config.stampFontSize || 40;
-       const widthOfText = sFont.widthOfTextAtSize(text, fontSize);
+
+       // 미리보기 스탬프는 항상 letterSpacing:0.1em, fontWeight:bold(가짜 볼드)를 쓰므로
+       // PDF도 같은 모양이 나오도록 글자 단위로 자간을 두고, 좌우 대칭 겹쳐그리기로 볼드를 흉내낸다.
+       const chars = Array.from(text);
+       const letterSpacingPx = fontSize * 0.1;
+       const charWidths = chars.map((c) => sFont.widthOfTextAtSize(c, fontSize));
+       const widthOfText = charWidths.reduce((sum, w) => sum + w, 0) + letterSpacingPx * (chars.length - 1);
        const ascentOfText = sFont.heightAtSize(fontSize, { descender: false });
        const heightOfText = sFont.heightAtSize(fontSize, { descender: true });
        const descentOfText = heightOfText - ascentOfText;
@@ -387,13 +403,20 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
            vCy = pos.y + heightOfText/2;
        }
 
-       const textCoords = getFinalCoords(vCx, vCy, widthOfText, ascentOfText - descentOfText, angle);
-       
-       page.drawText(text, {
-          x: textCoords.x, y: textCoords.y, size: fontSize,
-          font: sFont, color, opacity, rotate: textCoords.rotate
-       });
-       
+       const baselineLocalY = -(ascentOfText - descentOfText) / 2;
+       const boldOffset = fontSize * 0.02;
+       let cursor = -widthOfText / 2; // 중심 기준 왼쪽 끝에서 시작
+
+       for (let i = 0; i < chars.length; i++) {
+          const ch = chars[i];
+          const coords1 = localToFinal(vCx, vCy, cursor - boldOffset / 2, baselineLocalY, angle);
+          const coords2 = localToFinal(vCx, vCy, cursor + boldOffset / 2, baselineLocalY, angle);
+          const charOpts = { size: fontSize, font: sFont, color, opacity };
+          page.drawText(ch, { ...charOpts, x: coords1.x, y: coords1.y, rotate: coords1.rotate });
+          page.drawText(ch, { ...charOpts, x: coords2.x, y: coords2.y, rotate: coords2.rotate });
+          cursor += charWidths[i] + letterSpacingPx;
+       }
+
        if (config.stampBorder) {
           const pad = fontSize * 0.3;
           const boxW = widthOfText + pad * 2;

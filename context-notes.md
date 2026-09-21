@@ -44,3 +44,29 @@ node_modules 소스 코드로 직접 확인 (`CustomFontEmbedder.js`, `StandardF
 - 머리말/꼬리말(headfoot)의 동일한 baseline 근사 — 이번 요청 범위 밖이라 미변경
 - `vToPdf` 미정의 변수 크래시 버그 (`pdfHelpers.js:433`) — 발견했지만 별도 이슈라 이번엔 미포함,
   사용자에게 별도로 안내 예정
+
+## 후속 (2026-09-22): 스탬프 폰트 차이 + 텍스트 볼드 쏠림
+
+1·2번 수정 후에도 사용자가 스크린샷으로 "스탬프 폰트가 다르다", "Text/Watermark가 살짝
+우측·상단"이라고 재보고. 처음엔 "맑은고딕이 이 Mac에 없어서 폰트가 대체됐다"는 가설을
+세웠으나, 브라우저에서 실제로 확인해보니 틀렸다 — `document.fonts`/`FontFace`로 브라우저가
+쓰는 "Malgun Gothic"과 `/fonts/malgun.ttf`(PDF가 embed하는 파일)를 같은 페이지에서 직접
+로드해 텍스트 폭을 비교했더니 완전히 동일(0px 차이). 폰트 파일 자체는 문제가 아니었다.
+
+진짜 원인:
+1. 스탬프 CSS(`fontWeight:'bold'`, `letterSpacing:'0.1em'`)가 PDF엔 전혀 반영 안 됨 →
+   같은 폰트인데 완전히 다른 모양으로 보임.
+2. 텍스트/워터마크 볼드 시뮬레이션(`drawTextOverlay`)이 원래 위치에서 **오른쪽으로만**
+   겹쳐 그리는 방식이라 잉크 무게중심이 우측으로 쏠림.
+3. (참고, 이번엔 안 고침) 이탤릭 skew 각도가 브라우저 실측 약 13.8°인데 PDF는 고정 15° —
+   영향은 1px 미만으로 추정, 우선순위 낮음.
+
+수정: `getFinalCoords`를 `localToFinal(vCx,vCy,lx,ly,angle)` 기반으로 리팩토링해서
+회전+페이지회전 변환 로직을 재사용 가능하게 만들고, `drawStampOverlay`를 글자 단위 루프로
+바꿔 자간과 좌우 대칭 볼드를 적용. `drawTextOverlay`의 볼드도 좌우 대칭 오프셋으로 수정.
+스탬프의 테두리/패딩 공식(4번, 여전히 의도적으로 미수정)은 `widthOfText`가 이제 자간
+포함 값이라 자동으로 더 정확해짐 — 별도 로직 변경은 없음.
+
+검증: Playwright로 실제 앱에서 스탬프+테두리를 켠 뒤 `URL.createObjectURL`을 가로채서
+생성된 PDF의 실제 바이트를 받아 `pdftoppm`으로 렌더링, 캔버스 스크린샷과 눈으로 비교 —
+자간·볼드·테두리 박스 크기 전부 거의 동일하게 나옴을 확인.
