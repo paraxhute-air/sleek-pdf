@@ -5,6 +5,7 @@
   position: relative; /* Added to contain absolute overlay */
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  align-content: start; /* 행이 1개뿐일 때 남는 세로 공간이 행 자체를 늘리지 않도록 함 */
   gap: var(--space-md);
   padding: var(--space-md);
   background: var(--color-bg-canvas);
