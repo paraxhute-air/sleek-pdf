@@ -241,6 +241,42 @@ const getFontFamily = (fontId) => {
   }
 };
 
+// pdfHelpers.js의 calculatePosition()과 동일한 margin(24pt).
+// 이 컨테이너는 폭/높이가 PDF 페이지 크기(pt)와 1:1로 매핑되므로 px 값을 그대로 써도 된다.
+const PRESET_MARGIN = 24;
+
+/**
+ * 위치 프리셋(top-left 등)에 대해 요소 자신의 모서리를 앵커에 붙이는 스타일을 계산한다.
+ * 텍스트 폭/높이를 몰라도 브라우저가 알아서 배치하므로 계측이 필요 없다.
+ */
+function getPresetAnchorStyle(position, rotation, scaleTransform = '') {
+  const [vPos, hPos] = (position || 'middle-center').split('-');
+  const boxStyle = {};
+  let translateX = '0';
+  let translateY = '0';
+
+  if (hPos === 'left') {
+    boxStyle.left = `${PRESET_MARGIN}px`;
+  } else if (hPos === 'right') {
+    boxStyle.right = `${PRESET_MARGIN}px`;
+  } else {
+    boxStyle.left = '50%';
+    translateX = '-50%';
+  }
+
+  if (vPos === 'top') {
+    boxStyle.top = `${PRESET_MARGIN}px`;
+  } else if (vPos === 'bottom') {
+    boxStyle.bottom = `${PRESET_MARGIN}px`;
+  } else {
+    boxStyle.top = '50%';
+    translateY = '-50%';
+  }
+
+  boxStyle.transform = `translate(${translateX}, ${translateY}) rotate(${rotation}deg)${scaleTransform}`;
+  return boxStyle;
+}
+
 /**
  * DraggableElement
  * Handles DOM events for Drag, Resize, Rotate.
@@ -387,10 +423,9 @@ function DraggableElement({
       finalStyle.top = `${customY * 100}%`;
       finalStyle.transform = `translate(-50%, -50%) rotate(${rotation}deg) scale(${type === 'image' ? scale : 1})`;
   } else {
-      // Default to center if no custom
-      finalStyle.left = '50%';
-      finalStyle.top = '50%';
-      finalStyle.transform = `translate(-50%, -50%) rotate(${rotation}deg) scale(${type === 'image' ? scale : 1})`;
+      // 프리셋 위치(top-left 등): PDF의 calculatePosition()과 동일한 여백(24)·앵커 규칙을 재현
+      const scaleTransform = type === 'image' ? ` scale(${scale})` : '';
+      Object.assign(finalStyle, getPresetAnchorStyle(position, rotation, scaleTransform));
   }
 
   return (

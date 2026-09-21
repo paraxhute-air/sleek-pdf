@@ -238,8 +238,12 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
        const font = await getFontForConfig(config);
        const fontSize = config.fontSize || 60;
        const widthOfText = font.widthOfTextAtSize(text, fontSize);
-       const heightOfText = fontSize; 
-       
+       // fontSize를 그대로 높이로 쓰면 폰트의 실제 ascent/descent 비율과 안 맞아
+       // baseline이 미묘하게 어긋난다. pdf-lib가 제공하는 실제 폰트 메트릭을 사용한다.
+       const ascentOfText = font.heightAtSize(fontSize, { descender: false });
+       const heightOfText = font.heightAtSize(fontSize, { descender: true });
+       const descentOfText = heightOfText - ascentOfText;
+
        const color = config.color ? rgb(config.color.r, config.color.g, config.color.b) : rgb(0.5,0.5,0.5);
        const opacity = config.opacity ?? 0.4;
        const angle = -(config.rotation ?? 0);
@@ -254,8 +258,10 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
           vCx = pos.x + widthOfText / 2;
           vCy = pos.y + heightOfText / 2;
        }
-       
-       const textCoords = getFinalCoords(vCx, vCy, widthOfText, heightOfText, angle);
+
+       // baseline은 상자의 기하학적 중심이 아니라 (ascent-descent)/2 만큼 떨어진 지점이어야
+       // 시각적 중심과 일치한다.
+       const textCoords = getFinalCoords(vCx, vCy, widthOfText, ascentOfText - descentOfText, angle);
 
        const drawOpts = {
           x: textCoords.x,
@@ -362,13 +368,15 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
        const sFont = await getFontForConfig({ fontFamily: 'malgun' });
        const fontSize = config.stampFontSize || 40;
        const widthOfText = sFont.widthOfTextAtSize(text, fontSize);
-       const heightOfText = fontSize;
-       
+       const ascentOfText = sFont.heightAtSize(fontSize, { descender: false });
+       const heightOfText = sFont.heightAtSize(fontSize, { descender: true });
+       const descentOfText = heightOfText - ascentOfText;
+
        const colorVal = config.stampColor || { r: 0.8, g: 0.1, b: 0.1 };
        const color = rgb(colorVal.r, colorVal.g, colorVal.b);
        const opacity = config.stampOpacity ?? 0.8;
        const angle = -(config.stampRotation ?? -15);
-       
+
        let vCx, vCy;
        if (config.stampCustomX !== undefined && config.stampCustomX !== null) {
            vCx = vW * config.stampCustomX;
@@ -379,7 +387,7 @@ export async function mergePagesWithOverlay(pages, globalOverlay = null, pageOve
            vCy = pos.y + heightOfText/2;
        }
 
-       const textCoords = getFinalCoords(vCx, vCy, widthOfText, heightOfText * 0.8, angle);
+       const textCoords = getFinalCoords(vCx, vCy, widthOfText, ascentOfText - descentOfText, angle);
        
        page.drawText(text, {
           x: textCoords.x, y: textCoords.y, size: fontSize,
