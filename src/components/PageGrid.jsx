@@ -39,6 +39,7 @@ export default function PageGrid({
   onToggleDivider,
 }) {
   const [activeId, setActiveId] = useState(null);
+  const [activeIds, setActiveIds] = useState([]);
   const [overId, setOverId] = useState(null);
 
   const sensors = useSensors(
@@ -48,8 +49,15 @@ export default function PageGrid({
   );
 
   const handleDragStart = useCallback((event) => {
-    setActiveId(event.active.id);
-  }, []);
+    const draggedId = event.active.id;
+    // 선택된 페이지에서 드래그를 시작한 경우에만 선택 전체를 함께 이동한다.
+    const ids = selectedPageIds.has(draggedId)
+      ? pages.filter((page) => selectedPageIds.has(page.id)).map((page) => page.id)
+      : [draggedId];
+
+    setActiveId(draggedId);
+    setActiveIds(ids);
+  }, [pages, selectedPageIds]);
 
   const handleDragOver = useCallback((event) => {
     setOverId(event.over ? event.over.id : null);
@@ -58,16 +66,35 @@ export default function PageGrid({
   const handleDragEnd = useCallback((event) => {
     const { active, over } = event;
     setActiveId(null);
+    setActiveIds([]);
     setOverId(null);
-    if (over && active.id !== over.id) {
-      const oldIndex = pages.findIndex((p) => p.id === active.id);
-      const newIndex = pages.findIndex((p) => p.id === over.id);
-      onReorder(arrayMove(pages, oldIndex, newIndex));
+    if (!over || active.id === over.id || activeIds.includes(over.id)) return;
+
+    const oldIndex = pages.findIndex((p) => p.id === active.id);
+    const overIndex = pages.findIndex((p) => p.id === over.id);
+    if (oldIndex === -1 || overIndex === -1) return;
+
+    if (activeIds.length === 1) {
+      onReorder(arrayMove(pages, oldIndex, overIndex));
+      return;
     }
-  }, [pages, onReorder]);
+
+    const movingIds = new Set(activeIds);
+    const movingPages = pages.filter((page) => movingIds.has(page.id));
+    const remainingPages = pages.filter((page) => !movingIds.has(page.id));
+    const targetIndex = remainingPages.findIndex((page) => page.id === over.id);
+    const insertIndex = oldIndex < overIndex ? targetIndex + 1 : targetIndex;
+
+    onReorder([
+      ...remainingPages.slice(0, insertIndex),
+      ...movingPages,
+      ...remainingPages.slice(insertIndex),
+    ]);
+  }, [activeIds, pages, onReorder]);
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
+    setActiveIds([]);
     setOverId(null);
   }, []);
 
@@ -114,6 +141,7 @@ export default function PageGrid({
               isOver={!!getDropPosition(page.id)}
               dropPosition={getDropPosition(page.id)}
               isSelected={selectedPageIds ? selectedPageIds.has(page.id) : selectedPageId === page.id}
+              isGroupDragging={activeIds.length > 1 && activeIds.includes(page.id)}
               onSelect={onSelectPage}
               confirmDelete={confirmDelete}
               hasDivider={dividers?.has(index)}
@@ -152,6 +180,9 @@ export default function PageGrid({
                 <div className="page-thumb__placeholder" />
               )}
             </div>
+            {activeIds.length > 1 && (
+              <span className="page-thumb__drag-count">{activeIds.length}</span>
+            )}
           </div>
         ) : null}
       </DragOverlay>

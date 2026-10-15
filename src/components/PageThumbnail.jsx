@@ -8,7 +8,7 @@ import './PageThumbnail.css';
  * 썸네일 이미지만 카드 안에, 페이지 번호는 카드 바깥
  * 파일명은 0.5초 호버 후 말풍선으로 표시
  */
-export default function PageThumbnail({ page, thumbnail, index, onDelete, isOver, dropPosition, isSelected, onSelect, confirmDelete, hasDivider, onToggleDivider, viewMode }) {
+export default function PageThumbnail({ page, thumbnail, index, onDelete, isOver, dropPosition, isSelected, isGroupDragging, onSelect, confirmDelete, hasDivider, onToggleDivider, viewMode }) {
   const {
     attributes,
     listeners,
@@ -27,7 +27,7 @@ export default function PageThumbnail({ page, thumbnail, index, onDelete, isOver
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.3 : 1,
+    opacity: isDragging || isGroupDragging ? 0.3 : 1,
     zIndex: isDragging ? 100 : 'auto',
   };
 
